@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Trail Quest is a pass-and-play board game for 2-8 players. Push your luck, dodge the pits, race to the flag." />
+    <meta name="theme-color" content="#6d4ef6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#16132b" media="(prefers-color-scheme: dark)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%236d4ef6'/%3E%3Cpath d='M20 12v40' stroke='%23fff' stroke-width='6' stroke-linecap='round'/%3E%3Cpath d='M24 15h20l-6 9 6 9H24z' fill='%2315b8a6'/%3E%3C/svg%3E" />
+    <title>Trail Quest</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <!-- ============ SETUP ============ -->
+      <section id="setupScreen" class="screen">
+        <header class="hero">
+          <p class="eyebrow">Pass-and-play board game</p>
+          <h1>Trail&nbsp;Quest</h1>
+          <p class="tagline">2–8 players, one phone. Push your luck and race to the flag.</p>
+        </header>
+
+        <div class="panel">
+          <div class="count-row">
+            <span class="field-label">Players</span>
+            <div class="stepper">
+              <button id="minusBtn" class="round-btn" type="button" aria-label="Fewer players">−</button>
+              <strong id="countLabel" aria-live="polite">4</strong>
+              <button id="plusBtn" class="round-btn" type="button" aria-label="More players">+</button>
+            </div>
+          </div>
+
+          <div id="nameList" class="name-list"></div>
+
+          <button id="startBtn" class="primary-btn" type="button">Start game</button>
+        </div>
+
+        <details class="panel rules">
+          <summary>How to play</summary>
+          <div class="rules-body">
+            <p>Everyone shares one phone. On your turn you pick <em>one</em> thing:</p>
+            <ul class="rule-list">
+              <li><strong>Move 1, 2 or 3.</strong> Safe and exact. Use it to land on the tile you actually want.</li>
+              <li><strong>Push your luck.</strong> Roll the die again and again, stacking up steps. Roll a <strong>1</strong> and you lose every step you stacked this turn.</li>
+            </ul>
+            <p>Where you land matters:</p>
+            <ul class="rule-list legend">
+              <li><span class="legend-icon">⚡</span><span><strong>Boost</strong> — jump 3 more tiles forward.</span></li>
+              <li><span class="legend-icon">🕳️</span><span><strong>Pit</strong> — fall back 4 tiles.</span></li>
+              <li><span class="legend-icon">🛡️</span><span><strong>Shield</strong> — take one. It blocks the next pit or shove.</span></li>
+              <li><span class="legend-icon">🌀</span><span><strong>Warp</strong> — swap places with whoever is in the lead.</span></li>
+            </ul>
+            <p>Land on somebody and you <strong>shove</strong> them back 3 tiles, unless they spend a shield. Tile effects never chain, so a boost that drops you on a pit leaves you safe.</p>
+            <p>First player to reach the flag wins. You do not need an exact roll to finish.</p>
+          </div>
+        </details>
+      </section>
+
+      <!-- ============ GAME ============ -->
+      <section id="gameScreen" class="screen hidden">
+        <div class="turnbar">
+          <div class="turn-who">
+            <span id="turnDot" class="dot"></span>
+            <strong id="turnName">Player 1</strong>
+          </div>
+          <div class="turn-meta">
+            <span id="turnMeta">Tile 1 of 35</span>
+            <button id="quitBtn" class="ghost-btn" type="button">Quit</button>
+          </div>
+        </div>
+
+        <div class="board-wrap">
+          <div id="board" class="board" role="img" aria-label="Game board"></div>
+        </div>
+
+        <div id="roster" class="roster"></div>
+
+        <div class="actionbar">
+          <div class="readout">
+            <div id="die" class="die" hidden aria-hidden="true"></div>
+            <p id="message" class="message" aria-live="polite">Tap an action to take your turn.</p>
+          </div>
+          <div id="actions" class="actions"></div>
+        </div>
+      </section>
+
+      <!-- ============ GAME OVER ============ -->
+      <section id="overScreen" class="screen hidden">
+        <div class="panel win-panel">
+          <div class="trophy">🏆</div>
+          <h2 id="winnerLine">Player 1 wins!</h2>
+          <p id="winnerSub" class="tagline">Reached the flag first.</p>
+          <ol id="standings" class="standings"></ol>
+          <button id="rematchBtn" class="primary-btn" type="button">Rematch, same players</button>
+          <button id="newPlayersBtn" class="secondary-btn wide" type="button">Change players</button>
+        </div>
+      </section>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
