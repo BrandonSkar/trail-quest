@@ -212,7 +212,9 @@ h2 { margin: 0 0 6px; }
 
 .name-list { display: grid; gap: 9px; margin-bottom: 10px; }
 
-.name-row { display: flex; align-items: center; gap: 9px; }
+/* min-width:0 lets the row shrink inside a grid track. Without it the text
+   input's default intrinsic width pushes the two column layout off the panel. */
+.name-row { display: flex; align-items: center; gap: 9px; min-width: 0; }
 
 .piece-btn {
   flex: none;
