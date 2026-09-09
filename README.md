@@ -10,10 +10,23 @@ their choices wins noticeably more often than one who does not.
 
 ## A turn
 
-1. **Roll the die** and move that many spaces.
+1. **Roll the die** and watch your piece walk that many spaces.
 2. **Draw the card** for the space you land on. Some cards tell you what happens. Most give
    you a choice.
 3. **Pass the phone.**
+
+## Pieces
+
+Everyone picks an animal before the game starts. Colour still comes from the seat, so two
+players who choose similar animals are never hard to tell apart on the board. Pieces already
+taken are locked in the picker, and your choice is remembered for next time.
+
+## The board
+
+The trail is a scrolling track that follows whoever is playing, so the board can be big enough
+to read on a phone without shrinking the spaces. Pieces walk space by space rather than
+teleporting, stand at the foot of a space so the icon stays visible, and fan out when several
+share a square. There is a mute button in the corner for the sound effects.
 
 ## The spaces
 

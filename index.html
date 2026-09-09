@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="description" content="Trail Quest is a pass-and-play board game for 2-8 players. Roll the die, draw a card, and race to the flag." />
+    <meta name="description" content="Trail Quest is a pass-and-play board game for 2-8 players. Pick your piece, roll the die, draw a card, race to the flag." />
     <meta name="theme-color" content="#6d4ef6" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#16132b" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -17,9 +17,10 @@
       <!-- ============ SETUP ============ -->
       <section id="setupScreen" class="screen">
         <header class="hero">
+          <div class="hero-glow" aria-hidden="true"></div>
           <p class="eyebrow">Pass-and-play board game</p>
           <h1>Trail&nbsp;Quest</h1>
-          <p class="tagline">2&ndash;8 players, one phone. Roll, draw a card, race to the flag.</p>
+          <p class="tagline">2&ndash;8 players, one phone. Pick a piece, roll, and race to the flag.</p>
         </header>
 
         <div class="panel">
@@ -33,8 +34,11 @@
           </div>
 
           <div id="nameList" class="name-list"></div>
+          <p class="hint">Tap a piece to change it.</p>
 
-          <button id="startBtn" class="primary-btn" type="button">Start game</button>
+          <button id="startBtn" class="primary-btn" type="button">
+            <span>Start game</span>
+          </button>
         </div>
 
         <details class="panel rules">
@@ -42,9 +46,9 @@
           <div class="rules-body">
             <p>Everyone shares one phone. Your turn is three taps:</p>
             <ol class="rule-list">
-              <li><strong>Roll the die</strong> and move that many spaces.</li>
-              <li><strong>Draw a card</strong> for the space you land on. Some cards tell you
-                what happens. Others give you a choice, and the choice is usually the whole game.</li>
+              <li><strong>Roll the die</strong> and watch your piece walk that many spaces.</li>
+              <li><strong>Draw a card</strong> for the space you land on. Some cards tell you what
+                happens. Most give you a choice, and the choice is usually the whole game.</li>
               <li><strong>Pass the phone</strong> to the next player.</li>
             </ol>
 
@@ -53,16 +57,17 @@
               <li><span class="legend-chip sp-trail">🌲</span><span><strong>Trail</strong> — good news, and often a choice about how greedy to be.</span></li>
               <li><span class="legend-chip sp-risk">🎲</span><span><strong>Risk</strong> — a gamble. Take the safe option or roll for a bigger prize.</span></li>
               <li><span class="legend-chip sp-trouble">⚠️</span><span><strong>Trouble</strong> — a setback. You usually pick <em>how</em> you suffer.</span></li>
+              <li><span class="legend-chip sp-gear">🎒</span><span><strong>Gear</strong> — pick one item to carry with you.</span></li>
               <li><span class="legend-chip sp-rest">💤</span><span><strong>Rest</strong> — nothing happens. Catch your breath.</span></li>
               <li><span class="legend-chip sp-shortcut">⏩</span><span><strong>Shortcut</strong> — jump 3 spaces ahead, no card.</span></li>
             </ul>
 
             <p><strong>Energy ⚡</strong> is what cards trade in. Hold enough and you can buy your way
-              out of trouble, or <strong>sprint</strong> on your turn: spend 2 energy to add 3 to your roll.
+              out of trouble, or <strong>sprint</strong>: spend 2 energy to add 3 to your roll.
               Energy is worth nothing at the finish line, so spend it.</p>
 
-            <p><strong>Gear</strong> is the part worth thinking about. Some Trail cards hand you a piece
-              of gear, and you hold it until you decide the moment is right. You can carry two at once.</p>
+            <p><strong>Gear</strong> is the part worth thinking about, because you choose the moment.
+              You can carry two pieces at once.</p>
             <ul class="rule-list legend">
               <li><span class="legend-chip">🥾</span><span><strong>Fast Boots</strong> — skip the die and move exactly 6. Useful when a bad roll would ruin you.</span></li>
               <li><span class="legend-chip">🪢</span><span><strong>Rope</strong> — roll and add 3.</span></li>
@@ -70,8 +75,8 @@
               <li><span class="legend-chip">🍀</span><span><strong>Lucky Charm</strong> — when a Trouble card lands, throw it away instead. Spending it early is easy. Holding it is braver.</span></li>
             </ul>
 
-            <p>Land on another player and you knock them back 2 spaces. Only your die roll triggers
-              a space, so a card that moves you never sets off another card.</p>
+            <p>Land on another player and you knock them back 2. Only your die roll triggers a space,
+              so a card that moves you never sets off another card.</p>
 
             <p>First player to reach the flag wins. You do not need an exact roll to finish.</p>
           </div>
@@ -80,19 +85,27 @@
 
       <!-- ============ GAME ============ -->
       <section id="gameScreen" class="screen hidden">
-        <div class="turnbar">
-          <div class="turn-who">
-            <span id="turnDot" class="dot"></span>
-            <strong id="turnName">Player 1</strong>
+        <div class="hud">
+          <div class="hud-who">
+            <span id="hudPiece" class="hud-piece">🦊</span>
+            <div class="hud-text">
+              <strong id="turnName">Player 1</strong>
+              <span id="turnWhere" class="hud-sub">Space 1</span>
+            </div>
           </div>
-          <div class="turn-meta">
-            <span id="turnEnergy" class="energy-pill">⚡ 0</span>
-            <button id="quitBtn" class="ghost-btn" type="button">Quit</button>
+          <div class="hud-stats">
+            <span id="turnEnergy" class="pill">⚡ 0</span>
+            <span id="turnGear" class="pill gear-pill hidden"></span>
+            <button id="soundBtn" class="icon-btn" type="button" aria-label="Toggle sound">🔊</button>
+            <button id="quitBtn" class="icon-btn" type="button" aria-label="Quit game">✕</button>
           </div>
         </div>
 
-        <div class="board-wrap">
-          <div id="board" class="board" role="img" aria-label="Game board"></div>
+        <div class="board-viewport" id="boardViewport">
+          <div class="board" id="board">
+            <div class="tiles" id="tiles"></div>
+            <div class="tokens" id="tokens" aria-hidden="true"></div>
+          </div>
         </div>
 
         <div id="roster" class="roster"></div>
@@ -104,15 +117,27 @@
 
       <!-- ============ GAME OVER ============ -->
       <section id="overScreen" class="screen hidden">
+        <div class="confetti" id="confetti" aria-hidden="true"></div>
         <div class="panel win-panel">
-          <div class="trophy">🏆</div>
+          <div id="winnerPiece" class="winner-piece">🦊</div>
           <h2 id="winnerLine">Player 1 wins!</h2>
           <p id="winnerSub" class="tagline">First to the flag.</p>
           <ol id="standings" class="standings"></ol>
-          <button id="rematchBtn" class="primary-btn" type="button">Rematch, same players</button>
+          <button id="rematchBtn" class="primary-btn" type="button"><span>Rematch, same players</span></button>
           <button id="newPlayersBtn" class="secondary-btn wide" type="button">Change players</button>
         </div>
       </section>
+    </div>
+
+    <!-- ============ PIECE PICKER ============ -->
+    <div id="pieceSheet" class="sheet hidden">
+      <div class="sheet-backdrop" id="sheetBackdrop"></div>
+      <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="Choose a piece">
+        <div class="sheet-grab" aria-hidden="true"></div>
+        <h3 id="sheetTitle">Choose a piece</h3>
+        <div id="pieceGrid" class="piece-grid"></div>
+        <button id="sheetClose" class="secondary-btn wide" type="button">Done</button>
+      </div>
     </div>
 
     <script src="script.js"></script>

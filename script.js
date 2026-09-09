@@ -3,9 +3,10 @@
 
    A pass-and-play race for 2-8 players on one phone.
 
-   A turn is: play any gear you are holding, roll the die, move,
-   then draw the card for the space you landed on. Some cards
-   tell you what happens. Most hand you a choice.
+   Pick a piece, then each turn: play any gear you are holding,
+   roll the die, watch your piece walk, and draw the card for the
+   space it stops on. Some cards tell you what happens. Most hand
+   you a choice.
 
    The choices that matter most are about timing: gear sits in
    your hands until you decide the moment is right.
@@ -33,7 +34,7 @@ function boardLengthFor(count) {
   return 30;
 }
 
-function buildBoard(length) {
+function buildBoardSpaces(length) {
   const board = new Array(length);
   board[0] = "start";
   board[length - 1] = "finish";
@@ -41,7 +42,7 @@ function buildBoard(length) {
   return board;
 }
 
-let SPACES = buildBoard(30);
+let SPACES = buildBoardSpaces(30);
 let FINISH = SPACES.length - 1;
 
 const SPACE_INFO = {
@@ -75,6 +76,14 @@ const COLORS = [
   "#7c3aed", "#f97316", "#0f9c8d", "#e0374a",
   "#2563eb", "#ca8a04", "#db2777", "#0891b2"
 ];
+
+// Pieces are only a face. Colour still comes from the seat, so two players
+// who pick similar animals are never hard to tell apart on the board.
+const PIECES = [
+  "🦊", "🐼", "🐸", "🐙", "🦄", "🐝", "🦁", "🐢",
+  "🦖", "🐧", "🦉", "🐺", "🐨", "🦋", "🐬", "🦕",
+  "🐙", "🦜"
+].filter((v, i, a) => a.indexOf(v) === i);
 
 /* ---------------- Card helpers ----------------
    Cards call these. Each applies the effect and writes a line of
@@ -671,6 +680,7 @@ const state = {
   phase: "roll", // roll | card | target | result
   card: null,
   lastRoll: 0,
+  rolling: false,
   pendingGear: -1,
   busy: false,
   over: false
@@ -678,6 +688,8 @@ const state = {
 
 const piles = { trail: [], risk: [], trouble: [], gear: [] };
 let playerCount = 4;
+let setupPieces = PIECES.slice(0, 8);
+let sheetSlot = -1;
 
 /* ---------------- Elements ---------------- */
 
@@ -691,17 +703,30 @@ const els = {
   nameList: document.getElementById("nameList"),
   start: document.getElementById("startBtn"),
   quit: document.getElementById("quitBtn"),
-  turnDot: document.getElementById("turnDot"),
+  sound: document.getElementById("soundBtn"),
+  hudPiece: document.getElementById("hudPiece"),
   turnName: document.getElementById("turnName"),
+  turnWhere: document.getElementById("turnWhere"),
   turnEnergy: document.getElementById("turnEnergy"),
+  turnGear: document.getElementById("turnGear"),
+  viewport: document.getElementById("boardViewport"),
   board: document.getElementById("board"),
+  tiles: document.getElementById("tiles"),
+  tokens: document.getElementById("tokens"),
   roster: document.getElementById("roster"),
   stage: document.getElementById("stage"),
+  confetti: document.getElementById("confetti"),
+  winnerPiece: document.getElementById("winnerPiece"),
   winnerLine: document.getElementById("winnerLine"),
   winnerSub: document.getElementById("winnerSub"),
   standings: document.getElementById("standings"),
   rematch: document.getElementById("rematchBtn"),
-  newPlayers: document.getElementById("newPlayersBtn")
+  newPlayers: document.getElementById("newPlayersBtn"),
+  sheet: document.getElementById("pieceSheet"),
+  sheetBackdrop: document.getElementById("sheetBackdrop"),
+  sheetTitle: document.getElementById("sheetTitle"),
+  sheetClose: document.getElementById("sheetClose"),
+  pieceGrid: document.getElementById("pieceGrid")
 };
 
 /* ---------------- Small helpers ---------------- */
@@ -726,7 +751,11 @@ function current() {
 }
 
 function reducedMotion() {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch (err) {
+    return true;
+  }
 }
 
 function shuffle(list) {
@@ -744,6 +773,61 @@ function drawCard(kind) {
   return piles[kind].pop();
 }
 
+/* ---------------- Sound and buzz ----------------
+   Everything is synthesised, so the game stays a single folder of
+   text files with no audio to download.                          */
+
+let soundOn = true;
+let audio = null;
+
+function tone(freq, seconds, shape, volume, delay) {
+  if (!soundOn) return;
+  try {
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    if (!audio) audio = new Ctor();
+    if (audio.state === "suspended") audio.resume();
+
+    const osc = audio.createOscillator();
+    const gain = audio.createGain();
+    osc.type = shape || "sine";
+    osc.frequency.value = freq;
+    osc.connect(gain);
+    gain.connect(audio.destination);
+
+    const at = audio.currentTime + (delay || 0);
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(volume || 0.05, at + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + seconds);
+    osc.start(at);
+    osc.stop(at + seconds + 0.03);
+  } catch (err) {
+    /* No audio available. The game does not need it. */
+  }
+}
+
+function buzz(pattern) {
+  try {
+    if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(pattern);
+  } catch (err) {
+    /* Vibration is a bonus, never a requirement. */
+  }
+}
+
+const sfx = {
+  step: () => tone(520, 0.07, "triangle", 0.035),
+  roll: () => { tone(180, 0.05, "square", 0.03); buzz(12); },
+  land: () => { tone(660, 0.12, "triangle", 0.05); buzz(18); },
+  deal: () => tone(340, 0.1, "sine", 0.04),
+  good: () => { tone(523, 0.12, "sine", 0.05); tone(784, 0.16, "sine", 0.045, 0.1); },
+  bad: () => { tone(300, 0.14, "sawtooth", 0.035); tone(190, 0.2, "sawtooth", 0.03, 0.11); },
+  tap: () => tone(440, 0.05, "sine", 0.03),
+  win: () => {
+    [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.28, "triangle", 0.05, i * 0.11));
+    buzz([25, 60, 25, 60, 60]);
+  }
+};
+
 /* ---------------- Setup screen ---------------- */
 
 function loadSaved() {
@@ -758,11 +842,14 @@ function loadSaved() {
   }
 }
 
-function save(names) {
+function save(names, pieces) {
   try {
-    localStorage.setItem("trailquest.players", JSON.stringify({ count: names.length, names: names }));
+    localStorage.setItem(
+      "trailquest.players",
+      JSON.stringify({ count: names.length, names: names, pieces: pieces })
+    );
   } catch (err) {
-    /* private mode or full storage. Not worth interrupting the game over. */
+    /* Private mode or full storage. Not worth interrupting the game over. */
   }
 }
 
@@ -775,8 +862,12 @@ function renderNameInputs(prefill) {
 
   for (let i = 0; i < playerCount; i += 1) {
     const row = el("div", "name-row");
-    const dot = el("span", "dot");
-    dot.style.background = COLORS[i];
+
+    const piece = el("button", "piece-btn", setupPieces[i]);
+    piece.type = "button";
+    piece.style.background = COLORS[i];
+    piece.setAttribute("aria-label", "Choose a piece for player " + (i + 1));
+    piece.addEventListener("click", () => openSheet(i));
 
     const input = el("input", "name-input");
     input.type = "text";
@@ -786,7 +877,7 @@ function renderNameInputs(prefill) {
     input.setAttribute("aria-label", "Name for player " + (i + 1));
     input.value = (prefill && prefill[i]) || existing[i] || "";
 
-    row.appendChild(dot);
+    row.appendChild(piece);
     row.appendChild(input);
     els.nameList.appendChild(row);
   }
@@ -799,16 +890,58 @@ function collectNames() {
   });
 }
 
+/* ---------------- Piece picker ---------------- */
+
+function openSheet(slot) {
+  sheetSlot = slot;
+  els.sheetTitle.textContent = "Piece for player " + (slot + 1);
+  renderPieceGrid();
+  els.sheet.classList.remove("hidden");
+  sfx.tap();
+}
+
+function closeSheet() {
+  els.sheet.classList.add("hidden");
+  sheetSlot = -1;
+}
+
+function renderPieceGrid() {
+  clear(els.pieceGrid);
+
+  PIECES.forEach((piece) => {
+    const takenBy = setupPieces.indexOf(piece);
+    const taken = takenBy >= 0 && takenBy < playerCount && takenBy !== sheetSlot;
+    const chosen = setupPieces[sheetSlot] === piece;
+
+    const btn = el("button", "piece-option" + (taken ? " taken" : "") + (chosen ? " chosen" : ""), piece);
+    btn.type = "button";
+    if (chosen) btn.style.background = COLORS[sheetSlot];
+    if (taken) {
+      btn.disabled = true;
+      btn.setAttribute("aria-label", piece + ", already taken");
+    } else {
+      btn.addEventListener("click", () => {
+        setupPieces[sheetSlot] = piece;
+        sfx.tap();
+        renderPieceGrid();
+        renderNameInputs();
+        closeSheet();
+      });
+    }
+    els.pieceGrid.appendChild(btn);
+  });
+}
+
 /* ---------------- Starting a game ---------------- */
 
-function startGame(names) {
-  SPACES = buildBoard(boardLengthFor(names.length));
+function startGame(names, pieces) {
+  SPACES = buildBoardSpaces(boardLengthFor(names.length));
   FINISH = SPACES.length - 1;
 
   state.players = names.map((name, i) => ({
     name: name,
     color: COLORS[i],
-    initial: name.charAt(0).toUpperCase(),
+    piece: (pieces && pieces[i]) || PIECES[i] || "🦊",
     pos: 0,
     energy: 1,
     hand: [],
@@ -818,6 +951,7 @@ function startGame(names) {
   state.phase = "roll";
   state.card = null;
   state.lastRoll = 0;
+  state.rolling = false;
   state.pendingGear = -1;
   state.busy = false;
   state.over = false;
@@ -830,29 +964,29 @@ function startGame(names) {
   els.over.classList.add("hidden");
   els.game.classList.remove("hidden");
 
+  buildBoardDom();
+  buildTokens();
   render();
-  window.scrollTo(0, 0);
+  placeAll();
+  followActive(false);
+  scrollTop();
 }
 
-/* ---------------- Rendering ---------------- */
-
-function render() {
-  renderTurnbar();
-  renderBoard();
-  renderRoster();
-  renderStage();
+function scrollTop() {
+  try {
+    window.scrollTo(0, 0);
+  } catch (err) {
+    /* Not a browser. */
+  }
 }
 
-function renderTurnbar() {
-  const player = current();
-  els.turnDot.style.background = player.color;
-  els.turnName.textContent = player.name;
-  const carried = player.hand.map((k) => GEAR[k].icon).join("");
-  els.turnEnergy.textContent = "⚡ " + player.energy + (carried ? "  " + carried : "");
-}
+/* ---------------- Board ---------------- */
 
-function renderBoard() {
-  clear(els.board);
+let tileEls = [];
+
+function buildBoardDom() {
+  clear(els.tiles);
+  tileEls = [];
 
   for (let i = 0; i < SPACES.length; i += 1) {
     const row = Math.floor(i / COLS);
@@ -863,23 +997,220 @@ function renderBoard() {
     tile.style.gridRow = String(row + 1);
     tile.style.gridColumn = String(col + 1);
 
+    // Draw the stub of track that joins this space to the next one, so the
+    // route reads as a path rather than a wall of squares.
+    if (i < SPACES.length - 1) {
+      const nextRow = Math.floor((i + 1) / COLS);
+      if (nextRow !== row) tile.classList.add("link-d");
+      else tile.classList.add(row % 2 === 0 ? "link-r" : "link-l");
+    }
+
     tile.appendChild(el("span", "tile-num", String(i + 1)));
     tile.appendChild(el("span", "tile-icon", SPACE_INFO[kind].icon));
 
-    const here = state.players.filter((p) => p.pos === i);
-    if (here.length) {
-      const wrap = el("div", "tile-tokens");
-      here.forEach((p) => {
-        const token = el("span", "token", p.initial);
-        token.style.background = p.color;
-        if (p === current() && !state.over) token.classList.add("is-turn");
-        wrap.appendChild(token);
-      });
-      tile.appendChild(wrap);
+    els.tiles.appendChild(tile);
+    tileEls.push(tile);
+  }
+}
+
+/* ---------------- Pieces on the board ---------------- */
+
+let tokenEls = [];
+let tokenState = [];
+const walkTimers = {};
+
+function buildTokens() {
+  clear(els.tokens);
+  tokenEls = [];
+  tokenState = [];
+
+  state.players.forEach((p, i) => {
+    const token = el("div", "token", p.piece);
+    token.style.background = p.color;
+    token.style.color = p.color;
+    els.tokens.appendChild(token);
+    tokenEls.push(token);
+    // Everyone starts on the first space, so record that rather than animating
+    // a phantom walk onto the board on the first render.
+    tokenState.push({ index: 0, busy: false });
+    if (walkTimers[i]) { clearTimeout(walkTimers[i]); delete walkTimers[i]; }
+  });
+}
+
+// Pieces stand near the foot of a space rather than dead centre, so the icon
+// telling you what the space does stays readable underneath them.
+const TOKEN_DROP = 0.26;
+
+function tileCenter(index) {
+  const tile = tileEls[Math.max(0, Math.min(tileEls.length - 1, index))];
+  if (!tile) return { x: 0, y: 0, h: 0 };
+  return {
+    x: tile.offsetLeft + tile.offsetWidth / 2,
+    y: tile.offsetTop + tile.offsetHeight / 2,
+    h: tile.offsetHeight
+  };
+}
+
+// Several pieces on one space fan out instead of hiding each other.
+function slotOffset(slot, total) {
+  if (total <= 1) return { x: 0, y: 0 };
+  const spread = Math.min(11, 30 / (total - 1));
+  return {
+    x: (slot - (total - 1) / 2) * spread,
+    y: slot % 2 === 0 ? -3 : 3
+  };
+}
+
+function moveTokenTo(i, index, slot, total) {
+  const token = tokenEls[i];
+  if (!token) return;
+  const centre = tileCenter(index);
+  const offset = slotOffset(slot || 0, total || 1);
+  const x = centre.x + offset.x;
+  const y = centre.y + centre.h * TOKEN_DROP + offset.y;
+  token.style.transform = "translate(" + x + "px," + y + "px)";
+}
+
+function placeAll() {
+  const groups = {};
+  state.players.forEach((p) => {
+    if (!groups[p.pos]) groups[p.pos] = [];
+    groups[p.pos].push(p);
+  });
+
+  state.players.forEach((p, i) => {
+    if (tokenState[i] && tokenState[i].busy) return;
+    const group = groups[p.pos];
+    moveTokenTo(i, p.pos, group.indexOf(p), group.length);
+    if (tokenState[i]) tokenState[i].index = p.pos;
+  });
+}
+
+function walkToken(i, from, to, done) {
+  const token = tokenEls[i];
+  if (!token || from === to) {
+    if (done) done();
+    return;
+  }
+
+  const step = to > from ? 1 : -1;
+  const path = [];
+  for (let k = from + step; step > 0 ? k <= to : k >= to; k += step) path.push(k);
+
+  const stepMs = path.length > 8 ? 62 : path.length > 4 ? 92 : 122;
+  token.style.transitionDuration = stepMs + "ms";
+
+  let at = 0;
+  const tick = () => {
+    moveTokenTo(i, path[at], 0, 1);
+    token.classList.remove("hopping");
+    void token.offsetWidth;
+    token.classList.add("hopping");
+    sfx.step();
+    at += 1;
+
+    if (at < path.length) {
+      walkTimers[i] = setTimeout(tick, stepMs);
+      return;
     }
 
-    els.board.appendChild(tile);
+    walkTimers[i] = setTimeout(() => {
+      token.classList.remove("hopping");
+      token.classList.add("landed");
+      token.style.transitionDuration = "";
+      setTimeout(() => token.classList.remove("landed"), 420);
+      sfx.land();
+      if (done) done();
+    }, stepMs);
+  };
+
+  tick();
+}
+
+function syncTokens(animate, done) {
+  if (!tokenEls.length) {
+    if (done) done();
+    return;
   }
+
+  const movers = [];
+  state.players.forEach((p, i) => {
+    const ts = tokenState[i];
+    if (!ts || ts.busy) return;
+    if (ts.index !== p.pos) movers.push(i);
+  });
+
+  if (!animate || reducedMotion() || !movers.length) {
+    placeAll();
+    if (done) done();
+    return;
+  }
+
+  let pending = movers.length;
+  movers.forEach((i) => {
+    const ts = tokenState[i];
+    const from = ts.index;
+    ts.busy = true;
+    walkToken(i, from, state.players[i].pos, () => {
+      ts.busy = false;
+      ts.index = state.players[i].pos;
+      pending -= 1;
+      if (pending === 0) {
+        placeAll();
+        if (done) done();
+      }
+    });
+  });
+}
+
+// Keep the piece whose turn it is inside the board window.
+function followActive(smooth) {
+  const vp = els.viewport;
+  const tile = tileEls[current() ? current().pos : 0];
+  if (!vp || !tile || typeof vp.scrollTo !== "function") return;
+
+  const target = tile.offsetTop + tile.offsetHeight / 2 - vp.clientHeight / 2 + 12;
+  try {
+    vp.scrollTo({ top: Math.max(0, target), behavior: smooth === false ? "auto" : "smooth" });
+  } catch (err) {
+    vp.scrollTop = Math.max(0, target);
+  }
+}
+
+/* ---------------- Rendering ---------------- */
+
+function render() {
+  renderHud();
+  renderTileStates();
+  renderRoster();
+  renderStage();
+  syncTokens(true);
+}
+
+function renderHud() {
+  const player = current();
+  if (!player) return;
+
+  els.hudPiece.textContent = player.piece;
+  els.hudPiece.style.background = player.color;
+  els.turnName.textContent = player.name;
+  els.turnWhere.textContent = "Space " + (player.pos + 1) + " of " + SPACES.length;
+  els.turnEnergy.textContent = "⚡ " + player.energy;
+
+  if (player.hand.length) {
+    els.turnGear.textContent = player.hand.map((k) => GEAR[k].icon).join(" ");
+    els.turnGear.classList.remove("hidden");
+  } else {
+    els.turnGear.classList.add("hidden");
+  }
+}
+
+function renderTileStates() {
+  const occupied = {};
+  state.players.forEach((p) => { occupied[p.pos] = true; });
+  tileEls.forEach((tile, i) => {
+    tile.classList.toggle("occupied", !!occupied[i]);
+  });
 }
 
 function renderRoster() {
@@ -889,18 +1220,19 @@ function renderRoster() {
   state.players.forEach((p, i) => {
     const isActive = i === state.turn && !state.over;
     const chip = el("div", "chip" + (isActive ? " active" : ""));
-    const dot = el("span", "dot");
-    dot.style.background = p.color;
-    chip.appendChild(dot);
+
+    const piece = el("span", "chip-piece", p.piece);
+    piece.style.background = p.color;
+    chip.appendChild(piece);
     chip.appendChild(el("span", null, p.name));
+
     const carried = p.hand.map((k) => GEAR[k].icon).join("");
     chip.appendChild(el("span", "chip-pos", (p.pos + 1) + " · ⚡" + p.energy + (carried ? " " + carried : "")));
+
     els.roster.appendChild(chip);
     if (isActive) activeChip = chip;
   });
 
-  // With 6-8 players the strip scrolls, so hint at it and keep the
-  // active player in view rather than off the edge.
   const overflowing = els.roster.scrollWidth > els.roster.clientWidth + 1;
   els.roster.classList.toggle("scrollable", overflowing);
 
@@ -946,7 +1278,7 @@ function renderStage() {
     rivals(current()).forEach((target) => {
       actions.appendChild(
         button(
-          target.name,
+          target.piece + "  " + target.name,
           "On space " + (target.pos + 1) + ", send back " + GUST_BACK,
           "",
           () => useGust(target)
@@ -964,11 +1296,8 @@ function renderStage() {
 
     if (player.energy >= SPRINT_COST) {
       actions.appendChild(
-        button(
-          "Sprint",
-          "Spend " + SPRINT_COST + " energy, add " + SPRINT_BONUS,
-          "risky",
-          () => takeRoll(SPRINT_BONUS, true)
+        button("Sprint", "Spend " + SPRINT_COST + " energy, add " + SPRINT_BONUS, "risky", () =>
+          takeRoll(SPRINT_BONUS, true)
         )
       );
     }
@@ -976,11 +1305,8 @@ function renderStage() {
     player.hand.forEach((kind, index) => {
       if (kind === "charm") return; // the charm plays itself when trouble lands
       actions.appendChild(
-        button(
-          "Use " + GEAR[kind].icon + " " + GEAR[kind].name,
-          GEAR[kind].blurb,
-          "gear",
-          () => playGear(index)
+        button("Use " + GEAR[kind].icon + " " + GEAR[kind].name, GEAR[kind].blurb, "gear", () =>
+          playGear(index)
         )
       );
     });
@@ -990,7 +1316,7 @@ function renderStage() {
     }
   } else {
     const next = state.players[(state.turn + 1) % state.players.length];
-    actions.appendChild(button("Next: " + next.name, "Pass the phone", "big", nextTurn));
+    actions.appendChild(button(next.piece + "  Next: " + next.name, "Pass the phone", "big", nextTurn));
   }
 
   els.stage.appendChild(actions);
@@ -1023,8 +1349,6 @@ function cardView(card) {
     );
   }
 
-  // A charm turns any Trouble card into a decision: spend it now, or save it
-  // for something worse later.
   if (card.deck === "trouble" && current().hand.indexOf("charm") >= 0) {
     opts.appendChild(
       button("Use 🍀 Lucky Charm", "Ignore this card entirely", "gear", () =>
@@ -1054,7 +1378,7 @@ const PIP_LAYOUT = {
 };
 
 function dieView(value) {
-  const die = el("div", "die");
+  const die = el("div", "die" + (state.rolling ? " tumbling" : " settled"));
   PIP_LAYOUT[value].forEach((cell) => {
     const pip = el("span", "pip");
     pip.style.gridRow = String(Math.ceil(cell / 3));
@@ -1074,27 +1398,43 @@ function rollDie(done) {
   }
 
   state.busy = true;
+  state.rolling = true;
+  sfx.roll();
+
   let ticks = 0;
   const spin = setInterval(() => {
     ticks += 1;
     state.lastRoll = d6();
-    render();
-    if (ticks >= 4) {
+    renderStage();
+    if (ticks >= 5) {
       clearInterval(spin);
       state.lastRoll = value;
+      state.rolling = false;
       state.busy = false;
+      renderStage();
       done(value);
     }
-  }, 80);
+  }, 85);
 }
 
 /* ---------------- Taking a turn ---------------- */
 
 function advanceAndLand(player, steps) {
   player.pos = Math.min(FINISH, player.pos + steps);
-  if (player.pos >= FINISH) return finish(player);
-  bump(player);
-  landOn(player);
+
+  state.busy = true;
+  renderHud();
+  renderStage();
+
+  syncTokens(true, () => {
+    state.busy = false;
+    renderTileStates();
+    followActive(true);
+
+    if (player.pos >= FINISH) return finish(player);
+    bump(player);
+    landOn(player);
+  });
 }
 
 function takeRoll(bonus, paysSprint) {
@@ -1110,10 +1450,7 @@ function takeRoll(bonus, paysSprint) {
 
   rollDie((value) => {
     const total = value + bonus;
-    say(
-      player.name + " rolled " + value +
-      (bonus ? " and adds " + bonus + " for " + total : "") + "."
-    );
+    say(player.name + " rolled " + value + (bonus ? " and adds " + bonus + " for " + total : "") + ".");
     advanceAndLand(player, total);
   });
 }
@@ -1127,6 +1464,7 @@ function playGear(index) {
   if (kind === "gust") {
     state.pendingGear = index;
     state.phase = "target";
+    sfx.tap();
     render();
     return;
   }
@@ -1136,6 +1474,7 @@ function playGear(index) {
   if (kind === "boots") {
     log = [];
     say(player.name + " pulls on the fast boots and strides " + BOOTS_STEPS + ".");
+    sfx.good();
     advanceAndLand(player, BOOTS_STEPS);
     return;
   }
@@ -1159,6 +1498,7 @@ function useGust(target) {
   say(target.name + " is blown back to space " + (target.pos + 1) + ".");
   say("Now roll.");
 
+  sfx.bad();
   state.phase = "roll";
   render();
 }
@@ -1177,6 +1517,7 @@ function landOn(player) {
   if (kind === "shortcut") {
     player.pos = Math.min(FINISH, player.pos + SHORTCUT_JUMP);
     say("A shortcut. Jump " + SHORTCUT_JUMP + " ahead to space " + (player.pos + 1) + ".");
+    sfx.good();
     if (player.pos >= FINISH) return finish(player);
     return endTurnPhase();
   }
@@ -1190,6 +1531,7 @@ function landOn(player) {
     const card = drawCard(kind);
     state.card = { deck: kind, title: card.title, text: card.text, options: card.options };
     state.phase = "card";
+    sfx.deal();
     render();
     return;
   }
@@ -1200,6 +1542,7 @@ function landOn(player) {
 function chooseOption(option) {
   if (state.busy || state.over) return;
   const player = current();
+  const deck = state.card ? state.card.deck : "trail";
   state.card = null;
   state.phase = "result";
 
@@ -1207,16 +1550,18 @@ function chooseOption(option) {
     render();
     rollDie((value) => {
       option.roll(player, value);
-      afterCard(player);
+      afterCard(player, deck);
     });
     return;
   }
 
   option.run(player);
-  afterCard(player);
+  afterCard(player, deck);
 }
 
-function afterCard(player) {
+function afterCard(player, deck) {
+  if (deck === "trouble") sfx.bad();
+  else sfx.good();
   if (player.pos >= FINISH) return finish(player);
   endTurnPhase();
 }
@@ -1225,6 +1570,7 @@ function endTurnPhase() {
   state.phase = "result";
   state.card = null;
   render();
+  followActive(true);
 }
 
 function nextTurn() {
@@ -1246,38 +1592,70 @@ function nextTurn() {
     state.phase = "roll";
   }
 
+  sfx.tap();
   render();
+  followActive(true);
 }
 
 /* ---------------- Finish ---------------- */
+
+function throwConfetti() {
+  if (!els.confetti || reducedMotion()) return;
+  clear(els.confetti);
+  const palette = state.players.map((p) => p.color).concat(["#fbbf24", "#f472b6"]);
+
+  for (let i = 0; i < 44; i += 1) {
+    const bit = el("span");
+    bit.style.left = Math.random() * 100 + "%";
+    bit.style.background = palette[i % palette.length];
+    bit.style.animationDuration = (1.8 + Math.random() * 1.6).toFixed(2) + "s";
+    bit.style.animationDelay = (Math.random() * 0.7).toFixed(2) + "s";
+    bit.style.transform = "rotate(" + Math.floor(Math.random() * 360) + "deg)";
+    els.confetti.appendChild(bit);
+  }
+}
 
 function finish(winner) {
   state.over = true;
   state.phase = "result";
   state.card = null;
+  state.busy = false;
   render();
 
+  els.winnerPiece.textContent = winner.piece;
+  els.winnerPiece.style.background = winner.color;
   els.winnerLine.textContent = winner.name + " wins!";
-  els.winnerSub.textContent = log.length ? log[log.length - 1] : "First to the flag.";
+
+  // The last line of the log is the winning move, unless the game ended
+  // before anything happened, in which case it is just the turn prompt.
+  const lastLine = log.length ? log[log.length - 1] : "";
+  els.winnerSub.textContent =
+    lastLine && lastLine.indexOf("Roll the die") < 0 ? lastLine : "First to the flag.";
 
   clear(els.standings);
   state.players
     .slice()
     .sort((a, b) => b.pos - a.pos)
-    .forEach((p) => {
-      const li = el("li");
+    .forEach((p, rank) => {
+      const li = el("li", rank === 0 ? "first" : "");
+      li.appendChild(el("span", "rank", String(rank + 1)));
+
+      const piece = el("span", "stand-piece", p.piece);
+      piece.style.background = p.color;
+      li.appendChild(piece);
+
       li.appendChild(el("strong", null, p.name));
       li.appendChild(
-        document.createTextNode(
-          p === winner ? " reached the flag" : " stopped on space " + (p.pos + 1)
-        )
+        el("span", null, p === winner ? " reached the flag" : " stopped on space " + (p.pos + 1))
       );
       els.standings.appendChild(li);
     });
 
   els.game.classList.add("hidden");
   els.over.classList.remove("hidden");
-  window.scrollTo(0, 0);
+  throwConfetti();
+  sfx.win();
+  scrollTop();
 }
 
 /* ---------------- Wiring ---------------- */
@@ -1285,6 +1663,7 @@ function finish(winner) {
 els.minus.addEventListener("click", () => {
   if (playerCount > 2) {
     playerCount -= 1;
+    sfx.tap();
     renderNameInputs();
   }
 });
@@ -1292,14 +1671,17 @@ els.minus.addEventListener("click", () => {
 els.plus.addEventListener("click", () => {
   if (playerCount < 8) {
     playerCount += 1;
+    sfx.tap();
     renderNameInputs();
   }
 });
 
 els.start.addEventListener("click", () => {
   const names = collectNames();
-  save(names);
-  startGame(names);
+  const pieces = setupPieces.slice(0, playerCount);
+  save(names, pieces);
+  sfx.good();
+  startGame(names, pieces);
 });
 
 els.quit.addEventListener("click", () => {
@@ -1307,19 +1689,45 @@ els.quit.addEventListener("click", () => {
   state.over = true;
   els.game.classList.add("hidden");
   els.setup.classList.remove("hidden");
-  window.scrollTo(0, 0);
+  scrollTop();
 });
 
+els.sound.addEventListener("click", () => {
+  soundOn = !soundOn;
+  els.sound.textContent = soundOn ? "🔊" : "🔇";
+  els.sound.setAttribute("aria-label", soundOn ? "Mute sound" : "Unmute sound");
+  if (soundOn) sfx.tap();
+});
+
+els.sheetClose.addEventListener("click", closeSheet);
+els.sheetBackdrop.addEventListener("click", closeSheet);
+
 els.rematch.addEventListener("click", () => {
-  startGame(state.players.map((p) => p.name));
+  startGame(state.players.map((p) => p.name), state.players.map((p) => p.piece));
 });
 
 els.newPlayers.addEventListener("click", () => {
   els.over.classList.add("hidden");
   els.setup.classList.remove("hidden");
-  window.scrollTo(0, 0);
+  scrollTop();
 });
 
+// The board is measured in pixels, so a rotation or a resize needs a re-place.
+try {
+  window.addEventListener("resize", () => {
+    if (state.players.length && tileEls.length) placeAll();
+  });
+} catch (err) {
+  /* Not a browser. */
+}
+
 const saved = loadSaved();
-if (saved) playerCount = Math.min(8, Math.max(2, saved.count));
+if (saved) {
+  playerCount = Math.min(8, Math.max(2, saved.count));
+  if (Array.isArray(saved.pieces)) {
+    saved.pieces.forEach((piece, i) => {
+      if (piece && PIECES.indexOf(piece) >= 0) setupPieces[i] = piece;
+    });
+  }
+}
 renderNameInputs(saved ? saved.names : null);
