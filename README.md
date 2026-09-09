@@ -3,61 +3,79 @@
 A pass-and-play board game for **2 to 8 players** on a single phone. No install, no accounts,
 no server. Open the page, type everyone's name, and pass the phone around.
 
-Built for roughly ages 8 to 20: the rules fit in one screen, but the push-your-luck decision
-stays interesting for older players.
+Built for roughly ages 8 to 20. The rules fit on one screen, and a player who thinks about
+their choices wins noticeably more often than one who does not.
 
-## The game
+**Play it: https://brandonskar.github.io/trail-quest/**
 
-Race along a 35 tile trail. First player to reach the flag wins. On your turn you pick one thing:
+## A turn
 
-- **Move 1, 2 or 3** — safe and exact, so you can choose the tile you land on.
-- **Push your luck** — roll the die over and over, stacking up steps. Roll a **1** and you lose
-  every step you stacked that turn.
+1. **Roll the die** and move that many spaces.
+2. **Draw the card** for the space you land on. Some cards tell you what happens. Most give
+   you a choice.
+3. **Pass the phone.**
 
-Each action button previews what is waiting on the tile you would land on, so the choice is a real
-one rather than a guess.
+## The spaces
 
-### Tiles
-
-| Tile | Effect |
+| Space | What it deals |
 | --- | --- |
-| ⚡ Boost | Jump 3 more tiles forward. |
-| 🕳️ Pit | Fall back 4 tiles. |
-| 🛡️ Shield | Take one. It blocks the next pit or shove. |
-| 🌀 Warp | Swap places with whoever is in the lead. |
+| 🌲 Trail | Good news, usually with a choice about how greedy to be. |
+| 🎲 Risk | A gamble. Take the safe option, or roll for a bigger prize. |
+| ⚠️ Trouble | A setback. You normally pick *how* you suffer. |
+| 🎒 Gear | Pick one item to carry. |
+| 💤 Rest | Nothing happens. |
+| ⏩ Shortcut | Jump 3 ahead, no card. |
 
-Land on another player and you **shove** them back 3 tiles, unless they spend a shield.
+Land on another player and you knock them back 2. Only your die roll triggers a space, so a
+card that moves you never sets off another card.
 
-Tile effects never chain, so a boost that drops you onto a pit leaves you safe.
+## Energy and gear
 
-A game runs about 2 minutes with 2 players and about 6 minutes with 8.
+**Energy ⚡** is the currency cards trade in. Spend 2 of it to **sprint**, adding 3 to your roll.
+Some Trouble cards let you buy your way out of them. Energy is worth nothing at the finish
+line, so spend it.
+
+**Gear** is the part worth thinking about, because you decide *when* it happens. You can carry
+two pieces at once.
+
+| Gear | Effect |
+| --- | --- |
+| 🥾 Fast Boots | Skip the die and move exactly 6. Useful when a bad roll would ruin you. |
+| 🪢 Rope | Roll and add 3. |
+| 💨 Gust | Send any player you choose back 4, then take your turn. |
+| 🍀 Lucky Charm | When a Trouble card lands, throw it away instead. |
+
+## Board length
+
+Fewer players get a longer trail, so a two-player game is not over in four turns each and an
+eight-player game is not an afternoon.
+
+| Players | Spaces | Typical game |
+| --- | --- | --- |
+| 2 to 3 | 40 | 3 to 4 minutes |
+| 4 to 5 | 35 | 5 minutes |
+| 6 to 8 | 30 | 6 to 7 minutes |
 
 ## Running it locally
 
-Everything is plain HTML, CSS and JavaScript with no build step and no dependencies. Open
-`index.html` in a browser, or serve the folder:
+Plain HTML, CSS and JavaScript. No build step, no dependencies. Open `index.html`, or serve
+the folder:
 
 ```bash
 npx serve .
 ```
 
-## Publishing to GitHub Pages
+## Publishing
 
-Push to `main`. The workflow in `.github/workflows/pages.yml` deploys the site on every push,
-so you only need to switch Pages on once:
-
-1. Open the repository on GitHub.
-2. Go to **Settings** then **Pages**.
-3. Under **Build and deployment**, set **Source** to **GitHub Actions**.
-
-The site then lives at `https://<username>.github.io/<repository>/`, or at
-`https://<username>.github.io/` if the repository is named `<username>.github.io`.
+Push to `main`. The workflow in `.github/workflows/pages.yml` deploys on every push. Pages only
+needs switching on once, under **Settings** then **Pages**, with **Source** set to
+**GitHub Actions**.
 
 ## Files
 
 | File | Purpose |
 | --- | --- |
-| `index.html` | Page structure for the three screens: setup, game, results. |
+| `index.html` | The three screens: setup, game, results. |
 | `styles.css` | Mobile-first styling, including a dark theme. |
-| `script.js` | Board layout, turn flow, and every rule. |
+| `script.js` | Board generation, the four card decks, and every rule. |
 | `.github/workflows/pages.yml` | Deploys the site to GitHub Pages. |
