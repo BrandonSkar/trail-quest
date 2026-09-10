@@ -4,9 +4,9 @@
    A pass-and-play race for 2-8 players on one phone.
 
    Pick a piece, then each turn: play any gear you are holding,
-   roll the die, watch your piece walk, and draw the card for the
-   space it stops on. Some cards tell you what happens. Most hand
-   you a choice.
+   roll the die, watch your piece hop along the trail, and draw
+   the card for the space it stops on. Some cards tell you what
+   happens. Most hand you a choice.
 
    The choices that matter most are about timing: gear sits in
    your hands until you decide the moment is right.
@@ -14,9 +14,7 @@
 
 "use strict";
 
-/* ---------------- Board ---------------- */
-
-const COLS = 5;
+/* ---------------- The trail ---------------- */
 
 // The trail repeats this rhythm between the start and the flag.
 const PATTERN = [
@@ -56,6 +54,178 @@ const SPACE_INFO = {
   shortcut: { icon: "⏩", name: "Shortcut" }
 };
 
+/* ---------------- Board layout ----------------
+   The trail winds down the board in rows of four, and every space
+   is nudged up or down so the route curves instead of marching in
+   straight lines. Everything is in viewBox units: 100 wide, and as
+   tall as the number of rows needs. That means positions double as
+   percentages, so a space or a piece can be placed without ever
+   measuring the DOM.                                             */
+
+const BOARD_COLS = 4;
+const BOARD_PAD_X = 18;
+const BOARD_PAD_Y = 20;
+const BOARD_ROW_H = 25;
+const BOARD_WAVE = 3.4;
+
+function boardGeometry(count) {
+  const rows = Math.ceil(count / BOARD_COLS);
+  const height = BOARD_PAD_Y * 2 + (rows - 1) * BOARD_ROW_H;
+  const step = (100 - BOARD_PAD_X * 2) / (BOARD_COLS - 1);
+  const points = [];
+
+  for (let i = 0; i < count; i += 1) {
+    const row = Math.floor(i / BOARD_COLS);
+    const place = i % BOARD_COLS;
+    // Odd rows run right to left, so the trail snakes rather than jumps.
+    const col = row % 2 === 0 ? place : BOARD_COLS - 1 - place;
+    points.push({
+      x: BOARD_PAD_X + col * step,
+      y: BOARD_PAD_Y + row * BOARD_ROW_H + (col % 2 === 0 ? -BOARD_WAVE : BOARD_WAVE)
+    });
+  }
+
+  return { rows: rows, height: height, points: points };
+}
+
+// A Catmull-Rom spline through the spaces, written out as bezier curves, so
+// the ribbon passes exactly through the middle of every space.
+function smoothPath(points) {
+  if (points.length < 2) return "";
+  let d = "M" + round(points[0].x) + " " + round(points[0].y);
+
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const p0 = points[i - 1] || points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] || p2;
+    d +=
+      "C" + round(p1.x + (p2.x - p0.x) / 6) + " " + round(p1.y + (p2.y - p0.y) / 6) +
+      "," + round(p2.x - (p3.x - p1.x) / 6) + " " + round(p2.y - (p3.y - p1.y) / 6) +
+      "," + round(p2.x) + " " + round(p2.y);
+  }
+
+  return d;
+}
+
+function round(n) {
+  return Math.round(n * 100) / 100;
+}
+
+/* ---------------- Playing pieces ----------------
+   Real pieces rather than a coloured dot: a silhouette drawn once in
+   the player's colour, then drawn again on top with a gloss gradient
+   so it reads as a moulded plastic token standing on the board.   */
+
+const PIECES = [
+  {
+    id: "pawn",
+    name: "Pawn",
+    art:
+      '<ellipse cx="50" cy="102" rx="29" ry="11"/>' +
+      '<path d="M34 104c0-19 6-30 10-37h12c4 7 10 18 10 37z"/>' +
+      '<ellipse cx="50" cy="66" rx="17" ry="7"/>' +
+      '<rect x="42" y="44" width="16" height="24"/>' +
+      '<circle cx="50" cy="31" r="20"/>'
+  },
+  {
+    id: "star",
+    name: "Star",
+    art:
+      '<ellipse cx="50" cy="102" rx="25" ry="10"/>' +
+      '<rect x="42" y="62" width="16" height="42" rx="6"/>' +
+      '<polygon points="50,8 58.2,28.7 80.4,30.1 63.3,44.3 68.8,65.9 50,54 31.2,65.9 36.7,44.3 19.6,30.1 41.8,28.7"/>'
+  },
+  {
+    id: "heart",
+    name: "Heart",
+    art:
+      '<ellipse cx="50" cy="102" rx="25" ry="10"/>' +
+      '<rect x="42" y="62" width="16" height="42" rx="6"/>' +
+      '<path d="M50 76C33 63 21 53 21 38c0-10 8-17 16-17 6 0 11 3 13 7 2-4 7-7 13-7 8 0 16 7 16 17 0 15-12 25-29 38z"/>'
+  },
+  {
+    id: "crown",
+    name: "Crown",
+    art:
+      '<ellipse cx="50" cy="102" rx="25" ry="10"/>' +
+      '<rect x="42" y="62" width="16" height="42" rx="6"/>' +
+      '<polygon points="23,72 23,24 37,42 50,12 63,42 77,24 77,72"/>' +
+      '<circle cx="23" cy="22" r="7"/><circle cx="50" cy="10" r="7"/><circle cx="77" cy="22" r="7"/>'
+  },
+  {
+    id: "rocket",
+    name: "Rocket",
+    art:
+      '<ellipse cx="50" cy="102" rx="25" ry="10"/>' +
+      '<path d="M50 6c12 13 18 29 18 44v38H32V50c0-15 6-31 18-44z"/>' +
+      '<path d="M32 60c-9 7-14 17-14 28h14zM68 60c9 7 14 17 14 28H68z"/>' +
+      '<rect x="40" y="86" width="20" height="18" rx="6"/>'
+  },
+  {
+    id: "gem",
+    name: "Gem",
+    art:
+      '<ellipse cx="50" cy="102" rx="25" ry="10"/>' +
+      '<rect x="42" y="62" width="16" height="42" rx="6"/>' +
+      '<polygon points="33,16 67,16 82,40 50,80 18,40"/>'
+  },
+  {
+    id: "flower",
+    name: "Flower",
+    art:
+      '<ellipse cx="50" cy="102" rx="25" ry="10"/>' +
+      '<rect x="43" y="52" width="14" height="52" rx="6"/>' +
+      '<circle cx="50" cy="18" r="15"/><circle cx="69" cy="31.8" r="15"/>' +
+      '<circle cx="61.8" cy="54.2" r="15"/><circle cx="38.2" cy="54.2" r="15"/>' +
+      '<circle cx="31" cy="31.8" r="15"/><circle cx="50" cy="38" r="14"/>'
+  },
+  {
+    id: "gingy",
+    name: "Gingerbread",
+    art:
+      '<ellipse cx="50" cy="104" rx="27" ry="10"/>' +
+      '<circle cx="50" cy="22" r="17"/>' +
+      '<rect x="33" y="37" width="34" height="46" rx="14"/>' +
+      '<ellipse cx="21" cy="52" rx="13" ry="9" transform="rotate(-22 21 52)"/>' +
+      '<ellipse cx="79" cy="52" rx="13" ry="9" transform="rotate(22 79 52)"/>' +
+      '<ellipse cx="39" cy="92" rx="10" ry="15"/><ellipse cx="61" cy="92" rx="10" ry="15"/>'
+  },
+  {
+    id: "mushroom",
+    name: "Mushroom",
+    art:
+      '<ellipse cx="50" cy="102" rx="26" ry="10"/>' +
+      '<path d="M38 50h24v54H38z"/>' +
+      '<path d="M13 54c0-22 17-40 37-40s37 18 37 40z"/>'
+  },
+  {
+    id: "ghost",
+    name: "Ghost",
+    art:
+      '<ellipse cx="50" cy="104" rx="26" ry="10"/>' +
+      '<path d="M50 12c19 0 33 15 33 33v58l-11-8-11 8-11-8-11 8-11-8-11 8V45c0-18 14-33 33-33z"/>'
+  }
+];
+
+// Eight seats and ten pieces, so the last player still has something to pick.
+
+function pieceById(id) {
+  for (let i = 0; i < PIECES.length; i += 1) if (PIECES[i].id === id) return PIECES[i];
+  return PIECES[0];
+}
+
+// Colours come from our own palette, never from anything a player typed.
+function pieceSvg(id, color) {
+  const art = pieceById(id).art;
+  return (
+    '<svg class="piece" viewBox="0 0 100 120" style="color:' + color + '" aria-hidden="true">' +
+    '<g class="piece-body">' + art + "</g>" +
+    '<g class="piece-sheen">' + art + "</g>" +
+    "</svg>"
+  );
+}
+
 const SHORTCUT_JUMP = 3;
 const BUMP_BACK = 2;
 const SPRINT_COST = 2;
@@ -76,14 +246,6 @@ const COLORS = [
   "#7c3aed", "#f97316", "#0f9c8d", "#e0374a",
   "#2563eb", "#ca8a04", "#db2777", "#0891b2"
 ];
-
-// Pieces are only a face. Colour still comes from the seat, so two players
-// who pick similar animals are never hard to tell apart on the board.
-const PIECES = [
-  "🦊", "🐼", "🐸", "🐙", "🦄", "🐝", "🦁", "🐢",
-  "🦖", "🐧", "🦉", "🐺", "🐨", "🦋", "🐬", "🦕",
-  "🐙", "🦜"
-].filter((v, i, a) => a.indexOf(v) === i);
 
 /* ---------------- Card helpers ----------------
    Cards call these. Each applies the effect and writes a line of
@@ -688,7 +850,7 @@ const state = {
 
 const piles = { trail: [], risk: [], trouble: [], gear: [] };
 let playerCount = 4;
-let setupPieces = PIECES.slice(0, 8);
+let setupPieces = PIECES.map((p) => p.id).slice(0, 8);
 let sheetSlot = -1;
 
 /* ---------------- Elements ---------------- */
@@ -711,7 +873,8 @@ const els = {
   turnGear: document.getElementById("turnGear"),
   viewport: document.getElementById("boardViewport"),
   board: document.getElementById("board"),
-  tiles: document.getElementById("tiles"),
+  boardArt: document.getElementById("boardArt"),
+  spaces: document.getElementById("spaces"),
   tokens: document.getElementById("tokens"),
   roster: document.getElementById("roster"),
   stage: document.getElementById("stage"),
@@ -863,10 +1026,11 @@ function renderNameInputs(prefill) {
   for (let i = 0; i < playerCount; i += 1) {
     const row = el("div", "name-row");
 
-    const piece = el("button", "piece-btn", setupPieces[i]);
+    const piece = el("button", "piece-btn");
     piece.type = "button";
-    piece.style.background = COLORS[i];
-    piece.setAttribute("aria-label", "Choose a piece for player " + (i + 1));
+    piece.innerHTML = pieceSvg(setupPieces[i], COLORS[i]);
+    piece.setAttribute("data-piece", setupPieces[i]);
+    piece.setAttribute("aria-label", "Piece for player " + (i + 1) + ", " + pieceById(setupPieces[i]).name);
     piece.addEventListener("click", () => openSheet(i));
 
     const input = el("input", "name-input");
@@ -909,21 +1073,22 @@ function renderPieceGrid() {
   clear(els.pieceGrid);
 
   PIECES.forEach((piece) => {
-    const takenBy = setupPieces.indexOf(piece);
-    const taken = takenBy >= 0 && takenBy < playerCount && takenBy !== sheetSlot;
-    const chosen = setupPieces[sheetSlot] === piece;
+    const heldBy = setupPieces.indexOf(piece.id);
+    const taken = heldBy >= 0 && heldBy < playerCount && heldBy !== sheetSlot;
+    const chosen = setupPieces[sheetSlot] === piece.id;
 
-    const btn = el("button", "piece-option" + (taken ? " taken" : "") + (chosen ? " chosen" : ""), piece);
+    const btn = el("button", "piece-option" + (taken ? " taken" : "") + (chosen ? " chosen" : ""));
     btn.type = "button";
-    if (chosen) btn.style.background = COLORS[sheetSlot];
+    btn.innerHTML = pieceSvg(piece.id, taken ? "#9c96b8" : COLORS[Math.max(0, sheetSlot)]);
+    btn.setAttribute("data-piece", piece.id);
+    btn.setAttribute("aria-label", piece.name + (taken ? ", already taken" : ""));
+
     if (taken) {
       btn.disabled = true;
-      btn.setAttribute("aria-label", piece + ", already taken");
     } else {
       btn.addEventListener("click", () => {
-        setupPieces[sheetSlot] = piece;
+        setupPieces[sheetSlot] = piece.id;
         sfx.tap();
-        renderPieceGrid();
         renderNameInputs();
         closeSheet();
       });
@@ -941,7 +1106,7 @@ function startGame(names, pieces) {
   state.players = names.map((name, i) => ({
     name: name,
     color: COLORS[i],
-    piece: (pieces && pieces[i]) || PIECES[i] || "🦊",
+    piece: pieceById((pieces && pieces[i]) || PIECES[i % PIECES.length].id).id,
     pos: 0,
     energy: 1,
     hand: [],
@@ -980,36 +1145,63 @@ function scrollTop() {
   }
 }
 
-/* ---------------- Board ---------------- */
+/* ---------------- Building the trail ---------------- */
 
-let tileEls = [];
+let boardGeo = null;
+let spaceEls = [];
+
+// Lollipops and bushes in the margins either side of the trail.
+function decorSvg(geo) {
+  let out = "";
+  // Nothing beside the first or last row, so the start and the flag stay clear.
+  for (let r = 1; r < geo.rows - 1; r += 1) {
+    const y = BOARD_PAD_Y + r * BOARD_ROW_H;
+    const x = r % 2 === 0 ? 6.5 : 93.5;
+
+    if (r % 2 === 0) {
+      out +=
+        '<g class="decor-pop"><rect x="' + (x - 0.7) + '" y="' + y + '" width="1.4" height="13" rx="0.7"/>' +
+        '<circle cx="' + x + '" cy="' + y + '" r="5"/></g>';
+    } else {
+      out +=
+        '<g class="decor-bush"><circle cx="' + (x - 3.5) + '" cy="' + (y + 7) + '" r="4"/>' +
+        '<circle cx="' + (x + 1) + '" cy="' + (y + 5.5) + '" r="5.5"/>' +
+        '<circle cx="' + (x + 5) + '" cy="' + (y + 7.5) + '" r="3.5"/></g>';
+    }
+  }
+  return out;
+}
 
 function buildBoardDom() {
-  clear(els.tiles);
-  tileEls = [];
+  const geo = boardGeometry(SPACES.length);
+  boardGeo = geo;
+
+  els.board.style.aspectRatio = "100 / " + geo.height;
+
+  const path = smoothPath(geo.points);
+  els.boardArt.innerHTML =
+    '<svg class="trail-svg" viewBox="0 0 100 ' + geo.height + '" aria-hidden="true">' +
+    decorSvg(geo) +
+    '<path class="trail-edge" d="' + path + '"/>' +
+    '<path class="trail-fill" d="' + path + '"/>' +
+    '<path class="trail-dash" d="' + path + '"/>' +
+    "</svg>";
+
+  clear(els.spaces);
+  spaceEls = [];
 
   for (let i = 0; i < SPACES.length; i += 1) {
-    const row = Math.floor(i / COLS);
-    const col = row % 2 === 0 ? i % COLS : COLS - 1 - (i % COLS);
     const kind = SPACES[i];
+    const point = geo.points[i];
 
-    const tile = el("div", "tile sp-" + kind);
-    tile.style.gridRow = String(row + 1);
-    tile.style.gridColumn = String(col + 1);
+    const space = el("div", "space sp-" + kind);
+    space.style.left = round(point.x) + "%";
+    space.style.top = round((point.y / geo.height) * 100) + "%";
+    space.appendChild(el("span", "space-icon", SPACE_INFO[kind].icon));
+    space.appendChild(el("span", "space-num", String(i + 1)));
 
-    // Draw the stub of track that joins this space to the next one, so the
-    // route reads as a path rather than a wall of squares.
-    if (i < SPACES.length - 1) {
-      const nextRow = Math.floor((i + 1) / COLS);
-      if (nextRow !== row) tile.classList.add("link-d");
-      else tile.classList.add(row % 2 === 0 ? "link-r" : "link-l");
-    }
-
-    tile.appendChild(el("span", "tile-num", String(i + 1)));
-    tile.appendChild(el("span", "tile-icon", SPACE_INFO[kind].icon));
-
-    els.tiles.appendChild(tile);
-    tileEls.push(tile);
+    els.spaces.appendChild(space);
+    spaceEls.push(space);
   }
 }
 
@@ -1025,9 +1217,10 @@ function buildTokens() {
   tokenState = [];
 
   state.players.forEach((p, i) => {
-    const token = el("div", "token", p.piece);
-    token.style.background = p.color;
-    token.style.color = p.color;
+    const token = el("div", "token");
+    token.innerHTML = pieceSvg(p.piece, p.color);
+    token.setAttribute("data-piece", p.piece);
+    token.style.zIndex = String(10 + i);
     els.tokens.appendChild(token);
     tokenEls.push(token);
     // Everyone starts on the first space, so record that rather than animating
@@ -1037,38 +1230,37 @@ function buildTokens() {
   });
 }
 
-// Pieces stand near the foot of a space rather than dead centre, so the icon
-// telling you what the space does stays readable underneath them.
-const TOKEN_DROP = 0.26;
+// Pieces are sized in CSS as a share of the board, and these mirror it so the
+// script can work out where a piece has to sit in pixels.
+const TOKEN_WIDTH = 0.12;
+const TOKEN_RATIO = 1.2;
+const TOKEN_FOOT = 0.78;
 
-function tileCenter(index) {
-  const tile = tileEls[Math.max(0, Math.min(tileEls.length - 1, index))];
-  if (!tile) return { x: 0, y: 0, h: 0 };
-  return {
-    x: tile.offsetLeft + tile.offsetWidth / 2,
-    y: tile.offsetTop + tile.offsetHeight / 2,
-    h: tile.offsetHeight
-  };
-}
-
-// Several pieces on one space fan out instead of hiding each other.
+// Several pieces on one space shuffle sideways instead of hiding each other.
 function slotOffset(slot, total) {
-  if (total <= 1) return { x: 0, y: 0 };
-  const spread = Math.min(11, 30 / (total - 1));
-  return {
-    x: (slot - (total - 1) / 2) * spread,
-    y: slot % 2 === 0 ? -3 : 3
-  };
+  if (total <= 1) return 0;
+  const spread = Math.min(8, 22 / (total - 1));
+  return (slot - (total - 1) / 2) * spread;
 }
 
 function moveTokenTo(i, index, slot, total) {
   const token = tokenEls[i];
-  if (!token) return;
-  const centre = tileCenter(index);
-  const offset = slotOffset(slot || 0, total || 1);
-  const x = centre.x + offset.x;
-  const y = centre.y + centre.h * TOKEN_DROP + offset.y;
-  token.style.transform = "translate(" + x + "px," + y + "px)";
+  if (!token || !boardGeo) return;
+
+  const at = Math.max(0, Math.min(boardGeo.points.length - 1, index));
+  const point = boardGeo.points[at];
+
+  // Transform rather than left/top: transitioning left from its initial auto
+  // value is not interpolable, so the piece never leaves its static position.
+  const width = els.board.clientWidth || 0;
+  const height = els.board.clientHeight || 0;
+  const tokenW = width * TOKEN_WIDTH;
+  const tokenH = tokenW * TOKEN_RATIO;
+
+  const x = ((point.x + slotOffset(slot || 0, total || 1)) / 100) * width - tokenW / 2;
+  const y = (point.y / boardGeo.height) * height - tokenH * TOKEN_FOOT;
+
+  token.style.transform = "translate(" + round(x) + "px," + round(y) + "px)";
 }
 
 function placeAll() {
@@ -1097,7 +1289,7 @@ function walkToken(i, from, to, done) {
   const path = [];
   for (let k = from + step; step > 0 ? k <= to : k >= to; k += step) path.push(k);
 
-  const stepMs = path.length > 8 ? 62 : path.length > 4 ? 92 : 122;
+  const stepMs = path.length > 8 ? 70 : path.length > 4 ? 100 : 130;
   token.style.transitionDuration = stepMs + "ms";
 
   let at = 0;
@@ -1166,14 +1358,18 @@ function syncTokens(animate, done) {
 // Keep the piece whose turn it is inside the board window.
 function followActive(smooth) {
   const vp = els.viewport;
-  const tile = tileEls[current() ? current().pos : 0];
-  if (!vp || !tile || typeof vp.scrollTo !== "function") return;
+  const player = current();
+  if (!vp || !boardGeo || !player || typeof vp.scrollTo !== "function") return;
 
-  const target = tile.offsetTop + tile.offsetHeight / 2 - vp.clientHeight / 2 + 12;
+  const point = boardGeo.points[Math.min(boardGeo.points.length - 1, player.pos)];
+  const boardHeight = els.board.offsetHeight || 0;
+  const y = (els.board.offsetTop || 0) + (point.y / boardGeo.height) * boardHeight;
+  const target = Math.max(0, y - vp.clientHeight / 2);
+
   try {
-    vp.scrollTo({ top: Math.max(0, target), behavior: smooth === false ? "auto" : "smooth" });
+    vp.scrollTo({ top: target, behavior: smooth === false ? "auto" : "smooth" });
   } catch (err) {
-    vp.scrollTop = Math.max(0, target);
+    vp.scrollTop = target;
   }
 }
 
@@ -1181,7 +1377,7 @@ function followActive(smooth) {
 
 function render() {
   renderHud();
-  renderTileStates();
+  renderSpaceStates();
   renderRoster();
   renderStage();
   syncTokens(true);
@@ -1191,8 +1387,8 @@ function renderHud() {
   const player = current();
   if (!player) return;
 
-  els.hudPiece.textContent = player.piece;
-  els.hudPiece.style.background = player.color;
+  els.hudPiece.innerHTML = pieceSvg(player.piece, player.color);
+  els.hudPiece.setAttribute("data-piece", player.piece);
   els.turnName.textContent = player.name;
   els.turnWhere.textContent = "Space " + (player.pos + 1) + " of " + SPACES.length;
   els.turnEnergy.textContent = "⚡ " + player.energy;
@@ -1205,11 +1401,11 @@ function renderHud() {
   }
 }
 
-function renderTileStates() {
+function renderSpaceStates() {
   const occupied = {};
   state.players.forEach((p) => { occupied[p.pos] = true; });
-  tileEls.forEach((tile, i) => {
-    tile.classList.toggle("occupied", !!occupied[i]);
+  spaceEls.forEach((space, i) => {
+    space.classList.toggle("occupied", !!occupied[i]);
   });
 }
 
@@ -1221,8 +1417,9 @@ function renderRoster() {
     const isActive = i === state.turn && !state.over;
     const chip = el("div", "chip" + (isActive ? " active" : ""));
 
-    const piece = el("span", "chip-piece", p.piece);
-    piece.style.background = p.color;
+    const piece = el("span", "chip-piece");
+    piece.innerHTML = pieceSvg(p.piece, p.color);
+    piece.setAttribute("data-piece", p.piece);
     chip.appendChild(piece);
     chip.appendChild(el("span", null, p.name));
 
@@ -1278,7 +1475,7 @@ function renderStage() {
     rivals(current()).forEach((target) => {
       actions.appendChild(
         button(
-          target.piece + "  " + target.name,
+          target.name,
           "On space " + (target.pos + 1) + ", send back " + GUST_BACK,
           "",
           () => useGust(target)
@@ -1316,7 +1513,7 @@ function renderStage() {
     }
   } else {
     const next = state.players[(state.turn + 1) % state.players.length];
-    actions.appendChild(button(next.piece + "  Next: " + next.name, "Pass the phone", "big", nextTurn));
+    actions.appendChild(button("Next: " + next.name, "Pass the phone", "big", nextTurn));
   }
 
   els.stage.appendChild(actions);
@@ -1428,7 +1625,7 @@ function advanceAndLand(player, steps) {
 
   syncTokens(true, () => {
     state.busy = false;
-    renderTileStates();
+    renderSpaceStates();
     followActive(true);
 
     if (player.pos >= FINISH) return finish(player);
@@ -1622,8 +1819,8 @@ function finish(winner) {
   state.busy = false;
   render();
 
-  els.winnerPiece.textContent = winner.piece;
-  els.winnerPiece.style.background = winner.color;
+  els.winnerPiece.innerHTML = pieceSvg(winner.piece, winner.color);
+  els.winnerPiece.setAttribute("data-piece", winner.piece);
   els.winnerLine.textContent = winner.name + " wins!";
 
   // The last line of the log is the winning move, unless the game ended
@@ -1640,8 +1837,8 @@ function finish(winner) {
       const li = el("li", rank === 0 ? "first" : "");
       li.appendChild(el("span", "rank", String(rank + 1)));
 
-      const piece = el("span", "stand-piece", p.piece);
-      piece.style.background = p.color;
+      const piece = el("span", "stand-piece");
+      piece.innerHTML = pieceSvg(p.piece, p.color);
       li.appendChild(piece);
 
       li.appendChild(el("strong", null, p.name));
@@ -1712,21 +1909,12 @@ els.newPlayers.addEventListener("click", () => {
   scrollTop();
 });
 
-// The board is measured in pixels, so a rotation or a resize needs a re-place.
-try {
-  window.addEventListener("resize", () => {
-    if (state.players.length && tileEls.length) placeAll();
-  });
-} catch (err) {
-  /* Not a browser. */
-}
-
 const saved = loadSaved();
 if (saved) {
   playerCount = Math.min(8, Math.max(2, saved.count));
   if (Array.isArray(saved.pieces)) {
-    saved.pieces.forEach((piece, i) => {
-      if (piece && PIECES.indexOf(piece) >= 0) setupPieces[i] = piece;
+    saved.pieces.forEach((id, i) => {
+      if (id && i < setupPieces.length && pieceById(id).id === id) setupPieces[i] = id;
     });
   }
 }

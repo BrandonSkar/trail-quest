@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="description" content="Trail Quest is a pass-and-play board game for 2-8 players. Pick your piece, roll the die, draw a card, race to the flag." />
+    <meta name="description" content="Trail Quest is a pass-and-play board game for 2-8 players. Pick your piece, roll the die, draw a card, and race along the candy trail to the flag." />
     <meta name="theme-color" content="#6d4ef6" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#16132b" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -13,6 +13,18 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <!-- Shared gradients for the playing pieces. -->
+    <svg class="svg-defs" aria-hidden="true" focusable="false" width="0" height="0">
+      <defs>
+        <linearGradient id="pieceSheen" x1="0.2" y1="0" x2="0.75" y2="1">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.62" />
+          <stop offset="38%" stop-color="#ffffff" stop-opacity="0.14" />
+          <stop offset="62%" stop-color="#000000" stop-opacity="0.02" />
+          <stop offset="100%" stop-color="#000000" stop-opacity="0.28" />
+        </linearGradient>
+      </defs>
+    </svg>
+
     <div class="app">
       <!-- ============ SETUP ============ -->
       <section id="setupScreen" class="screen">
@@ -36,9 +48,7 @@
           <div id="nameList" class="name-list"></div>
           <p class="hint">Tap a piece to change it.</p>
 
-          <button id="startBtn" class="primary-btn" type="button">
-            <span>Start game</span>
-          </button>
+          <button id="startBtn" class="primary-btn" type="button"><span>Start game</span></button>
         </div>
 
         <details class="panel rules">
@@ -46,20 +56,20 @@
           <div class="rules-body">
             <p>Everyone shares one phone. Your turn is three taps:</p>
             <ol class="rule-list">
-              <li><strong>Roll the die</strong> and watch your piece walk that many spaces.</li>
+              <li><strong>Roll the die</strong> and watch your piece hop along the trail.</li>
               <li><strong>Draw a card</strong> for the space you land on. Some cards tell you what
                 happens. Most give you a choice, and the choice is usually the whole game.</li>
               <li><strong>Pass the phone</strong> to the next player.</li>
             </ol>
 
-            <p>The spaces decide which deck you draw from:</p>
+            <p>The colour of the space decides which deck you draw from:</p>
             <ul class="rule-list legend">
-              <li><span class="legend-chip sp-trail">🌲</span><span><strong>Trail</strong> — good news, and often a choice about how greedy to be.</span></li>
-              <li><span class="legend-chip sp-risk">🎲</span><span><strong>Risk</strong> — a gamble. Take the safe option or roll for a bigger prize.</span></li>
-              <li><span class="legend-chip sp-trouble">⚠️</span><span><strong>Trouble</strong> — a setback. You usually pick <em>how</em> you suffer.</span></li>
-              <li><span class="legend-chip sp-gear">🎒</span><span><strong>Gear</strong> — pick one item to carry with you.</span></li>
-              <li><span class="legend-chip sp-rest">💤</span><span><strong>Rest</strong> — nothing happens. Catch your breath.</span></li>
-              <li><span class="legend-chip sp-shortcut">⏩</span><span><strong>Shortcut</strong> — jump 3 spaces ahead, no card.</span></li>
+              <li><span class="legend-chip sp-trail">🌲</span><span><strong>Green, Trail</strong> — good news, and often a choice about how greedy to be.</span></li>
+              <li><span class="legend-chip sp-risk">🎲</span><span><strong>Orange, Risk</strong> — a gamble. Take the safe option or roll for a bigger prize.</span></li>
+              <li><span class="legend-chip sp-trouble">⚠️</span><span><strong>Red, Trouble</strong> — a setback. You usually pick <em>how</em> you suffer.</span></li>
+              <li><span class="legend-chip sp-gear">🎒</span><span><strong>Purple, Gear</strong> — pick one item to carry with you.</span></li>
+              <li><span class="legend-chip sp-rest">💤</span><span><strong>Blue, Rest</strong> — nothing happens. Catch your breath.</span></li>
+              <li><span class="legend-chip sp-shortcut">⏩</span><span><strong>Pink, Shortcut</strong> — jump 3 spaces ahead, no card.</span></li>
             </ul>
 
             <p><strong>Energy ⚡</strong> is what cards trade in. Hold enough and you can buy your way
@@ -87,7 +97,7 @@
       <section id="gameScreen" class="screen hidden">
         <div class="hud">
           <div class="hud-who">
-            <span id="hudPiece" class="hud-piece">🦊</span>
+            <span id="hudPiece" class="hud-piece"></span>
             <div class="hud-text">
               <strong id="turnName">Player 1</strong>
               <span id="turnWhere" class="hud-sub">Space 1</span>
@@ -103,7 +113,8 @@
 
         <div class="board-viewport" id="boardViewport">
           <div class="board" id="board">
-            <div class="tiles" id="tiles"></div>
+            <div class="board-art" id="boardArt" aria-hidden="true"></div>
+            <div class="spaces" id="spaces"></div>
             <div class="tokens" id="tokens" aria-hidden="true"></div>
           </div>
         </div>
@@ -119,7 +130,7 @@
       <section id="overScreen" class="screen hidden">
         <div class="confetti" id="confetti" aria-hidden="true"></div>
         <div class="panel win-panel">
-          <div id="winnerPiece" class="winner-piece">🦊</div>
+          <div id="winnerPiece" class="winner-piece"></div>
           <h2 id="winnerLine">Player 1 wins!</h2>
           <p id="winnerSub" class="tagline">First to the flag.</p>
           <ol id="standings" class="standings"></ol>

@@ -17,16 +17,21 @@ their choices wins noticeably more often than one who does not.
 
 ## Pieces
 
-Everyone picks an animal before the game starts. Colour still comes from the seat, so two
-players who choose similar animals are never hard to tell apart on the board. Pieces already
-taken are locked in the picker, and your choice is remembered for next time.
+Everyone picks a playing piece before the game starts: a pawn, star, heart, crown, rocket, gem,
+flower, gingerbread person, mushroom or ghost. Each is drawn as a moulded token in the player's
+colour rather than a coloured dot. Colour comes from the seat, so two players who choose similar
+shapes are still easy to tell apart. Pieces another player holds are locked in the picker, and
+your choice is remembered for next time.
 
 ## The board
 
-The trail is a scrolling track that follows whoever is playing, so the board can be big enough
-to read on a phone without shrinking the spaces. Pieces walk space by space rather than
-teleporting, stand at the foot of a space so the icon stays visible, and fan out when several
-share a square. There is a mute button in the corner for the sound effects.
+The trail winds down the board in a curving ribbon through glossy candy spaces, with lollipops
+and bushes in the margins. It scrolls, and follows whoever is playing, so the spaces stay big
+enough to read on a phone.
+
+Pieces hop from space to space rather than teleporting, and shuffle sideways when several share
+a space. Space colour tells you which deck you draw from, so a piece standing on a space never
+hides what matters. There is a mute button in the corner for the sound effects.
 
 ## The spaces
 
